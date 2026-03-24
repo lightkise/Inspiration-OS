@@ -1,95 +1,109 @@
+/**
+ * 🧠 Inspiration-OS: From Chaos to Architecture
+ * A high-performance AI Agent for personal knowledge management.
+ * * Logic: Telegram (Input) -> Cloudflare Workers (Brain) -> Notion (Storage)
+ * Models: Google Gemini 2.5 Flash (Architect Reasoning)
+ */
+
 export default {
   async fetch(request, env) {
+    // 1. Basic Webhook Validation / 基础 Webhook 校验
     if (request.method !== "POST") return new Response("OK");
 
     let chatId;
     try {
       const payload = await request.json();
       chatId = payload.message?.chat?.id;
-      const originalText = payload.message?.text;
-      if (!originalText) return new Response("OK");
+      const userText = payload.message?.text;
 
-      const now = new Date();
-      const dateStr = new Date(now.getTime() + 8 * 3600000).toISOString().split('T')[0];
+      if (!userText) return new Response("OK");
 
-      // --- 1. 调用 Gemini 2.5-flash (产品架构师模式) ---
-      // 注意：这里必须是 v1beta 和 gemini-2.5-flash
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.API_KEY}`;
-      const geminiRes = await fetch(geminiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ 
-            parts: [{ text: `你是一位资深产品架构师。请将以下灵感梳理为6个维度：产品定义、输入链路、中枢逻辑、存储分发、推荐技术栈、MVP开发路径。
-输出格式严格遵循以下 JSON，不要输出任何多余文字：
-{
-  "title": "5字内标题",
-  "category": "技术/商业/生活/艺术",
-  "framework": "1. 产品定义...\\n2. 输入链路...\\n3. 中枢逻辑...\\n4. 存储分发...\\n5. 推荐技术栈...\\n6. MVP 开发路径..."
-}
-灵感内容：${originalText}` }] 
-          }]
-        })
-      });
+      // 🚀 Step 2: Invoke AI Architect / 调用 AI 架构师深度推理
+      // We use Gemini 2.5 Flash for high-speed, high-order logical analysis.
+      const architecture = await this.askAIArchitect(userText, env.API_KEY);
 
-      const geminiData = await geminiRes.json();
-      if (geminiData.error) throw new Error(`Gemini: ${geminiData.error.message}`);
-      
-      const rawResponse = geminiData.candidates[0].content.parts[0].text;
-      const jsonStr = rawResponse.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(jsonStr);
+      // 🚀 Step 3: Atomic Storage to Notion / 持久化存储至 Notion
+      // Includes custom logic to handle Notion's 2000-char block limit.
+      await this.saveToNotion(architecture, env);
 
-      // --- 2. 核心修复：处理 Notion 2000 字符限制 ---
-      const splitContent = (str) => {
-        const chunks = [];
-        for (let i = 0; i < str.length; i += 2000) {
-          chunks.push({ text: { content: str.substring(i, i + 2000) } });
-        }
-        return chunks;
-      };
-
-      // --- 3. 写入 Notion ---
-      const notionRes = await fetch("https://api.notion.com/v1/pages", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${env.NOTION_TOKEN}`,
-          "Content-Type": "application/json",
-          "Notion-Version": "2022-06-28"
-        },
-        body: JSON.stringify({
-          parent: { database_id: env.NOTION_DATABASE_ID },
-          properties: {
-            "Name": { title: [{ text: { content: parsed.title } }] },
-            "Content": { rich_text: splitContent(parsed.framework) },
-            "Category": { multi_select: [{ name: parsed.category }] },
-            "Created Time": { date: { start: dateStr } }
-          }
-        })
-      });
-
-      if (!notionRes.ok) {
-        const nErr = await notionRes.json();
-        throw new Error(`Notion: ${nErr.message}`);
-      }
-
-      await fetch(`https://api.telegram.org/bot${env.TELE_TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: `🚀 **方案重载成功！**\n\n📌 **${parsed.title}**\n已按架构模版存入 Notion。`
-        })
-      });
+      // 4. Feedback / 成功反馈
+      await this.notifyUser(chatId, `✅ **Architecture Generated!**\n\nTitle: ${architecture.title}\nStatus: Synced to Notion Workspace.`, env.TELE_TOKEN);
 
     } catch (err) {
-      if (chatId) {
-        await fetch(`https://api.telegram.org/bot${env.TELE_TOKEN}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat_id: chatId, text: `❌ 异常：${err.message}` })
-        });
-      }
+      console.error("Critical Error:", err.message);
+      if (chatId) await this.notifyUser(chatId, `❌ **Error:** ${err.message}`, env.TELE_TOKEN);
     }
+
     return new Response("OK");
+  },
+
+  /**
+   * PROMPT ENGINEERING: The core "Brain" of this Agent.
+   * This prompt forces Gemini to act as a Senior Business Analyst & Architect.
+   */
+  async askAIArchitect(input, apiKey) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    
+    const prompt = `
+      Act as a Senior Product Architect. Analyze this inspiration: "${input}"
+      Generate a structured architecture in JSON format with these fields:
+      1. title: A professional name for the project.
+      2. category: One of [Product, Tech, Business, Life].
+      3. framework: A deep 6-dimension analysis (Definition, Core Logic, Tech Stack, Data Flow, MVP Path, Growth Strategy). Use Markdown for formatting.
+      Return ONLY raw JSON. No markdown backticks.
+    `;
+
+    const res = await fetch(url, {
+      method: "POST",
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+    });
+
+    const json = await res.json();
+    const rawText = json.candidates[0].content.parts[0].text;
+    
+    // Cleaning Logic: Remove potential ```json tags / 清洗 AI 返回的冗余标记
+    return JSON.parse(rawText.replace(/```json|```/g, "").trim());
+  },
+
+  /**
+   * RECURSIVE CHUNKING: Bypassing Notion API's physical limits.
+   * Notion rich_text has a 2000-char limit. This function splits long text.
+   */
+  async saveToNotion(data, env) {
+    const createChunks = (text) => {
+      const chunks = [];
+      for (let i = 0; i < text.length; i += 2000) {
+        chunks.push({ text: { content: text.substring(i, i + 2000) } });
+      }
+      return chunks;
+    };
+
+    const res = await fetch("[https://api.notion.com/v1/pages](https://api.notion.com/v1/pages)", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${env.NOTION_TOKEN}`,
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28"
+      },
+      body: JSON.stringify({
+        parent: { database_id: env.NOTION_DATABASE_ID },
+        properties: {
+          Name: { title: [{ text: { content: data.title } }] },
+          Content: { rich_text: createChunks(data.framework) },
+          Category: { multi_select: [{ name: data.category }] },
+          "Created Time": { date: { start: new Date().toISOString().split("T")[0] } }
+        }
+      })
+    });
+
+    if (!res.ok) throw new Error(`Notion API fail: ${res.statusText}`);
+  },
+
+  async notifyUser(chatId, text, token) {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" })
+    });
   }
 };
