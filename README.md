@@ -14,8 +14,6 @@
 一个基于 **AI Agent** 思维的原子化信息流转系统。它通过 Telegram 监听用户输入的乱序灵感，利用 Gemini 2.5 Flash 的深度推理能力，自动完成标题提取、分类判断及“6维度”产品架构梳理，并最终持久化存储至 Notion 数据库。
 
 ## 🛠️ 系统架构 (System Architecture)
-
-```mermaid
 graph LR
     A[Telegram Bot] -- Webhook/JSON --> B[Cloudflare Workers]
     B -- Prompt Strategy --> C[Gemini 2.5 Flash]
