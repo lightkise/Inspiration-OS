@@ -14,6 +14,8 @@
 一个基于 **AI Agent** 思维的原子化信息流转系统。它通过 Telegram 监听用户输入的乱序灵感，利用 Gemini 2.5 Flash 的深度推理能力，自动完成标题提取、分类判断及“6维度”产品架构梳理，并最终持久化存储至 Notion 数据库。
 
 ## 🛠️ 系统架构 (System Architecture)
+
+```mermaid
 graph LR
     A[Telegram Bot] -- Webhook/JSON --> B[Cloudflare Workers]
     B -- Prompt Strategy --> C[Gemini 2.5 Flash]
@@ -21,17 +23,21 @@ graph LR
     B -- Recursive Splitting --> D[Notion API]
     D -- Success Feedback --> B
     B -- Notification --> A
+```
 
-## 🛠️ 核心架构 (Core Logic)
+## 🔧 核心技术攻关 (Engineering Challenges)
 
-1. **输入链路 (Input)**: 移动端 Telegram 随时随地录入。
-2. **中枢逻辑 (Brain)**: 
-   - **JSON 强制规范**: 确保 AI 输出稳定的结构化数据。
-   - **架构师提示词**: 注入专业产品经理思维，产出包含：产品定义、输入链路、中枢逻辑、存储分发、推荐技术栈、MVP 路径的深度方案。
-3. **健壮性优化 (Robustness)**:
-   - **自动切片算法**: 突破 Notion API 单个文本块 2000 字符的限制，支持长篇架构方案自动分页写入。
-   - **模型自适应**: 自动兼容 Gemini v1beta 最新接口与 2.5 系列模型。
-4. **存储分发 (Persistence)**: 自动对齐 Notion 的 `Name` (Title), `Content` (Rich Text), `Category` (Multi-select) 及 `Created Time` (Date) 属性。
+### 1. 突破 Notion API 字符限制
+- **痛点**：Notion `rich_text` 属性单次写入限制为 2000 字符，而 Gemini 生成的深度架构方案经常达到 3000+ 字符。
+- **解法**：开发了 `splitContent` 递归分片函数，将超长字符串自动切割为满足 API 规范的数组块，确保方案完整入库。
+
+### 2. 模型自适应与稳定性优化
+- **痛点**：Gemini 不同版本（v1/v1beta）的端点差异易导致 404 错误。
+- **解法**：通过锁定 `v1beta` 路径并适配 `Gemini 2.5 Flash`，实现了极高的推理响应稳定性。
+
+### 3. JSON 数据清洗与结构化容错
+- **痛点**：LLM 有时会返回带 Markdown 标记的 JSON（如 \`\`\`json），直接解析会导致 `JSON.parse` 抛出异常。
+- **解法**：引入了正则表达式预处理机制，在解析前自动剔除冗余标记。
 
 ## 📈 项目复盘 (STAR)
 
@@ -43,11 +49,25 @@ graph LR
     * 解决 Notion 属性类型匹配及字符超限等工程坑位。
 * **R (Result)**: 成功落地一个 L3 级别的 AI Agent，实现从“碎碎念”到“PRD原型”的分钟级转化。
 
-## ⚙️ 快速开始
-1. 在 Notion 建立灵感数据库（需包含 Name, Content, Category, Created Time 列）。
-2. 在 Cloudflare Workers 配置环境变量：`API_KEY`, `NOTION_TOKEN`, `NOTION_DATABASE_ID`, `TELE_TOKEN`。
-3. 部署 `index.js` 代码。   
-4. 在 Telegram 设置 Webhook 关联至 Worker URL。
+## ⚙️ 快速开始 (Quick Start)
+
+### 1. 准备工作
+- **Notion**: 创建数据库，包含 `Name`(Title), `Content`(Text), `Category`(Multi-select), `Created Time`(Date)。
+- **Telegram**: 找 [@BotFather](https://t.me/botfather) 获取 `TELE_TOKEN`。
+- **Gemini**: 获取 [Google AI API Key](https://aistudio.google.com/app/apikey)。
+
+### 2. 环境变量配置
+在 Cloudflare Workers 配置以下变量：
+
+| 变量名 | 说明 |
+| :--- | :--- |
+| `API_KEY` | Google Gemini API Key |
+| `TELE_TOKEN` | Telegram Bot Token |
+| `NOTION_TOKEN` | Notion Internal Integration Token |
+| `NOTION_DATABASE_ID` | 目标数据库 ID |
+
+### 3. 部署
+将 `index.js` 代码部署至 Cloudflare Workers 并激活 Webhook 即可。
 
 ---
 
