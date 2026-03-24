@@ -101,3 +101,5 @@ graph LR
 ---
 
 **Developed with ❤️ by Light Kise**
+
+**MIT License © 2026 Light Kise**
