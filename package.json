@@ -1,0 +1,7 @@
+{
+  "name": "inspiration-os",
+  "type": "module",
+  "devDependencies": {
+    "wrangler": "latest"
+  }
+}
