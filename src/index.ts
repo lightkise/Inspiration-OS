@@ -34,7 +34,7 @@ export default {
 
     try {
       // 2. 调用 Gemini AI 进行总结
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.API_KEY}`;
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${env.API_KEY}`;
       const geminiRes = await fetch(geminiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
