@@ -1,6 +1,6 @@
 /**
- * 🧠 Inspiration-OS v2.1 (Language Adaptive Edition)
- * Features: Auto-language detection, Senior Architect Logic, Stable Sync.
+ * 🧠 Inspiration-OS v2.5 (Standardized & Smart Category)
+ * 逻辑：优先匹配标准分类库，特殊灵感自动提炼精准标签。
  */
 
 export default {
@@ -15,45 +15,42 @@ export default {
 
       if (!userText) return new Response("OK");
 
-      // 🚀 调用 AI 架构师
+      // 1. 调用 AI 获取架构
       const architecture = await this.askAIArchitect(userText, env.API_KEY);
 
-      // 🚀 写入 Notion
+      // 2. 写入 Notion
       await this.saveToNotion(architecture, env);
 
-      // 4. 反馈 (反馈语我们也做一下简单的双语适配)
+      // 3. 成功反馈
       const isChinese = /[\u4e00-\u9fa5]/.test(userText);
-      const successTitle = isChinese ? "✅ 架构方案已生成！" : "✅ Architecture Generated!";
-      const statusMsg = isChinese ? "*状态：已同步至 Notion 工作区*" : "*Status: Synced to Notion Workspace.*";
-      
-      const successMsg = `${successTitle}\n\n**项目名称:** ${architecture.title}\n**所属分类:** ${architecture.category}\n\n${statusMsg}`;
+      const successTitle = isChinese ? "✅ 灵感已录入星图" : "✅ Inspiration Archived";
+      const successMsg = `${successTitle}\n\n**项目:** ${architecture.title}\n**标签:** #${architecture.category}\n\n*内容已同步至 Notion，请查收。*`;
       await this.notifyUser(chatId, successMsg, env.TELE_TOKEN);
 
     } catch (err) {
       console.error("Critical Error:", err.message);
       if (chatId) {
-        const errorMsg = `❌ **Operation Failed**\n\n**Reason:** \`${err.message}\``;
-        await this.notifyUser(chatId, errorMsg, env.TELE_TOKEN);
+        await this.notifyUser(chatId, `❌ **同步失败**\n原因: \`${err.message}\``, env.TELE_TOKEN);
       }
     }
     return new Response("OK");
   },
 
   async askAIArchitect(input, apiKey) {
-    const cleanKey = apiKey.trim();
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${cleanKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey.trim()}`;
     
-    // 核心改动：增加语言自适应指令
+    // 关键改动：给 AI 一个建议库，但保留提炼权
     const prompt = `
       Act as a Senior Product Architect. Analyze: "${input}"
+      Response MUST be in the SAME LANGUAGE as input.
       
-      CRITICAL: You MUST respond in the SAME LANGUAGE as the input (e.g., if input is Chinese, output Chinese).
-      
-      Return ONLY a JSON object with:
-      1. title: Project name.
-      2. category: [Product, Tech, Business, Life].
-      3. framework: 6-dimension analysis (Definition, Core Logic, Tech Stack, Data Flow, MVP Path, Growth Strategy).
-      NO markdown formatting, NO backticks.
+      Return ONLY a VALID JSON object:
+      {
+        "title": "A concise and professional project name",
+        "category": "Pick the most relevant tag. PREFER: [产品, 技术, 商业, 游戏, 职场, 留学, 生活, 艺术]. If none fit, generate a precise 2-4 character Chinese tag.",
+        "framework": "Deep 6-dimension professional analysis."
+      }
+      NO markdown, NO extra text.
     `;
 
     const res = await fetch(url, {
@@ -61,46 +58,43 @@ export default {
       body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
     });
 
-    if (!res.ok) throw new Error(`Gemini API: ${res.statusText}`);
     const json = await res.json();
     const rawText = json.candidates[0].content.parts[0].text;
     const cleanedJson = rawText.replace(/```json|```/gi, "").trim();
+    
     return JSON.parse(cleanedJson);
   },
 
   async saveToNotion(data, env) {
-    const createChunks = (text) => {
+    const createChunks = (textContent) => {
       const chunks = [];
-      const content = text || "No data.";
-      for (let i = 0; i < content.length; i += 2000) {
-        chunks.push({ text: { content: content.substring(i, i + 2000) } });
+      const text = textContent || "无详细内容";
+      for (let i = 0; i < text.length; i += 2000) {
+        chunks.push({ text: { content: text.substring(i, i + 2000) } });
       }
       return chunks;
     };
 
-    const token = env.NOTION_TOKEN.trim();
-    const dbId = env.NOTION_DATABASE_ID.trim();
-
     const response = await fetch("https://api.notion.com/v1/pages", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${token}`,
+        "Authorization": `Bearer ${env.NOTION_TOKEN.trim()}`,
         "Content-Type": "application/json",
         "Notion-Version": "2022-06-28"
       },
       body: JSON.stringify({
-        parent: { database_id: dbId },
+        parent: { database_id: env.NOTION_DATABASE_ID.trim() },
         properties: {
-          "Name": { title: [{ text: { content: data.title || "New Inspiration" } }] },
+          "Name": { title: [{ text: { content: data.title || "新灵感" } }] },
           "Content": { rich_text: createChunks(data.framework) },
-          "Category": { multi_select: [{ name: data.category || "Life" }] }
+          "Category": { multi_select: [{ name: data.category || "其它" }] }
         }
       })
     });
 
     if (!response.ok) {
-      const errorDetail = await response.json();
-      throw new Error(`Notion API: ${errorDetail.message || response.statusText}`);
+      const err = await response.json();
+      throw new Error(err.message);
     }
   },
 
